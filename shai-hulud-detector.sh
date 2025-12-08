@@ -81,6 +81,7 @@ create_temp_dir() {
     touch "$TEMP_DIR/malicious_hashes.txt"
     touch "$TEMP_DIR/destructive_patterns.txt"
     touch "$TEMP_DIR/trufflehog_patterns.txt"
+    touch "$TEMP_DIR/package_usage_findings.txt"
 }
 
 # Function: cleanup_temp_files
@@ -407,6 +408,8 @@ usage() {
     echo "  --paranoid         Enable additional security checks (typosquatting, network patterns)"
     echo "                     These are general security features, not specific to Shai-Hulud"
     echo "  --parallelism N    Set the number of threads to use for parallelized steps (current: ${PARALLELISM})"
+    echo "  --check-package P  Check for usage of a specific package (skips all security checks)"
+    echo "                     Exit code 0 = package not found, Exit code 1 = package found"
     echo "  --save-log FILE    Save all detected file paths to FILE, grouped by severity"
     echo "                     Output format: # HIGH / # MEDIUM / # LOW headers with file paths"
     echo ""
@@ -420,6 +423,7 @@ usage() {
     echo "  $0 --paranoid /path/to/your/project         # Core + advanced security checks"
     echo "  $0 --save-log report.log /path/to/project   # Save findings to file"
     echo "  $0 --use-ripgrep /path/to/your/project      # Force ripgrep for testing"
+    echo "  $0 --check-package lodash /path/to/project  # Check if lodash is used (standalone mode)"
     exit 1
 }
 
@@ -1272,6 +1276,39 @@ check_packages() {
             done
         fi
     done
+
+    echo -ne "\r\033[K"
+}
+
+# Function: check_package_usage
+# Purpose: Check for usage of a specific package across the project (standalone mode)
+# Args: $1 = scan_dir, $2 = package_name
+# Modifies: $TEMP_DIR/package_usage_findings.txt
+# Returns: Populates findings file with package usage locations and versions
+check_package_usage() {
+    local scan_dir=$1
+    local package_name=$2
+    
+    print_status "$BLUE" "   Searching for package: $package_name..."
+
+    # Extract all dependencies using the same pattern as check_packages
+    xargs -P "$PARALLELISM" -I {} awk -v file="{}" '
+        /"dependencies":|"devDependencies":/ {flag=1; next}
+        /^[[:space:]]*\}/ {flag=0}
+        flag && /^[[:space:]]*"[^"]+":/ {
+            gsub(/^[[:space:]]*"/, "")
+            gsub(/":[[:space:]]*"/, ":")
+            gsub(/".*$/, "")
+            if (length($0) > 0 && index($0, ":") > 0) {
+                print file "|" $0
+            }
+        }
+    ' {} < "$TEMP_DIR/package_files.txt" > "$TEMP_DIR/all_deps_check.txt" 2>/dev/null
+
+    # Search for exact package name match
+    grep -F "|$package_name:" "$TEMP_DIR/all_deps_check.txt" 2>/dev/null | while IFS='|' read -r file_path dep; do
+        [[ -n "$file_path" ]] && echo "$file_path:${dep/:/@}" >> "$TEMP_DIR/package_usage_findings.txt"
+    done || true
 
     echo -ne "\r\033[K"
 }
@@ -2794,6 +2831,7 @@ main() {
     local paranoid_mode=false
     local scan_dir=""
     local save_log=""
+    local check_package=""
 
     # Load compromised packages from external file
     load_compromised_packages
@@ -2820,6 +2858,10 @@ main() {
                     usage
                 fi
                 PARALLELISM=$2
+                shift
+                ;;
+            --check-package)
+                check_package="$2"
                 shift
                 ;;
             --save-log)
@@ -2899,6 +2941,36 @@ main() {
     # Show summary of collected files
     local total_files=$(wc -l < "$TEMP_DIR/all_files_raw.txt" 2>/dev/null || echo "0")
     print_stage_complete "File collection ($total_files files)"
+
+    # STANDALONE MODE: Package check (skips all security checks)
+    if [[ -n "$check_package" ]]; then
+        print_status "$GREEN" "Package Check Mode: Searching for '$check_package'"
+        echo
+        check_package_usage "$scan_dir" "$check_package"
+        
+        # Report findings
+        if [[ -s "$TEMP_DIR/package_usage_findings.txt" ]]; then
+            print_status "$GREEN" "✓ Package '$check_package' found:"
+            echo
+            
+            # Group by version
+            local current_version=""
+            sort -t: -k2,2 -k1,1 "$TEMP_DIR/package_usage_findings.txt" | while IFS=: read -r file_path package_version; do
+                if [[ "$package_version" != "$current_version" ]]; then
+                    [[ -n "$current_version" ]] && echo
+                    echo "   $package_version"
+                    current_version="$package_version"
+                fi
+                local rel_path="${file_path#$scan_dir/}"
+                echo "      $rel_path"
+            done
+            echo
+            exit 1  # Package found = exit 1
+        else
+            echo "Package not found"
+            exit 0  # Package not found = exit 0
+        fi
+    fi
 
     # Run core Shai-Hulud detection checks (sequential for reliability)
     print_status "$ORANGE" "[Stage 2/6] Core detection (workflows, hashes, packages, hooks)"
