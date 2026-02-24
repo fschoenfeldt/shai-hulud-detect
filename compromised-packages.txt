@@ -1,11 +1,12 @@
 # Shai-Hulud NPM Supply Chain Attack - Compromised Packages List
 #
-# This file contains 571+ confirmed compromised package versions from multiple September 2025 attacks
-# The Shai-Hulud attack was self-replicating, so new compromised packages may still be discovered
+# This file contains 1,700+ confirmed compromised package versions from
+# multiple supply chain attacks between September 2025 and February 2026.
+# The campaigns were self-replicating, so new compromised packages may still be discovered.
 #
 # Sources: StepSecurity, Wiz.io, Semgrep, JFrog security advisories and Socket.dev
 # Format: package_name:version
-# Last updated: November 2025
+# Last updated: February 2026
 #
 # MAINTAINING THIS LIST:
 # - Add new compromised packages as they are discovered
@@ -15,6 +16,7 @@
 #   * https://jfrog.com/blog/shai-hulud-npm-supply-chain-attack-new-compromised-packages-detected/
 #   * https://www.wiz.io/blog/shai-hulud-npm-supply-chain-attack
 #   * https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages
+#   * https://socket.dev/blog/sandworm-mode-npm-worm-ai-toolchain-poisoning
 # - Format: one package:version per line
 # - Lines starting with # are comments and will be ignored
 #
@@ -794,6 +796,7 @@
 @quick-start-soft/quick-task-refine:1.4.2511142126
 @relyt/claude-context-core:0.1.1
 @relyt/claude-context-mcp:0.1.1
+@relyt/mcp-server-relytone:0.0.3
 @rxap/ngx-bootstrap:19.0.3
 @rxap/ngx-bootstrap:19.0.4
 @sameepsi/sor2:2.0.2
@@ -938,6 +941,9 @@
 @varsityvibe/validation-schemas:0.6.7
 @varsityvibe/validation-schemas:0.6.8
 @viapip/eslint-config:0.2.4
+@vietmoney/react-big-calendar:0.26.0
+@vietmoney/react-big-calendar:0.26.1
+@vietmoney/react-big-calendar:0.26.2
 @vishadtyagi/full-year-calendar:0.1.11
 @voiceflow/alexa-types:2.15.61
 @voiceflow/anthropic:0.4.4
@@ -1295,6 +1301,7 @@ hyper-fullfacing:1.0.3
 hyperterm-hipster:1.0.7
 ids-css:1.5.1
 ids-enterprise-mcp-server:0.0.2
+ids-enterprise-ng:20.1.6
 ids-enterprise-typings:20.1.6
 image-to-uri:1.0.1
 image-to-uri:1.0.2
@@ -1704,3 +1711,34 @@ zapier-scripts:7.8.4
 zuper-cli:1.0.1
 zuper-sdk:1.0.57
 zuper-stream:2.0.9
+
+# ========================================================================
+# FEBRUARY 2026 - SANDWORM_MODE AI TOOLCHAIN POISONING ATTACK (19 packages)
+# AI toolchain poisoning and workflow propagation via ci-quality/code-quality-check@v1
+# Source: https://socket.dev/blog/sandworm-mode-npm-worm-ai-toolchain-poisoning
+# ========================================================================
+claud-code:0.2.1
+cloude-code:0.2.1
+cloude:0.3.0
+crypto-locale:1.0.0
+crypto-reader-info:1.0.0
+detect-cache:1.0.0
+format-defaults:1.0.0
+hardhta:1.0.0
+locale-loader-pro:1.0.0
+naniod:1.0.0
+node-native-bridge:1.0.0
+opencraw:2026.2.17
+parse-compat:1.0.0
+rimarf:1.0.0
+scan-store:1.0.0
+secp256:1.0.0
+suport-color:1.0.1
+veim:2.46.2
+yarsg:18.0.1
+
+# Observed sleeper packages from the same campaign (not confirmed malicious at publish time):
+# ethres
+# iru-caches
+# iruchache
+# uudi

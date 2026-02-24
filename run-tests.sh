@@ -53,6 +53,7 @@ declare -A EXPECTED=(
     ["network-exfiltration-project"]="2|no|yes|no" # TODO: Fix trufflehog HIGH detection
     ["no-lockfile-test"]="0|no|no|no"          # Clean
     ["november-2025-attack"]="1|yes|yes|no"    # HIGH: November 2025 attack (was timeout in orig)
+    ["sandworm-mode-workflow"]="1|yes|no|no"   # HIGH: February 2026 SANDWORM_MODE workflow IOC
     ["semver-matching"]="0|no|no|yes"          # LOW: semver edge cases
     ["semver-wildcards"]="0|no|no|no"          # Clean
     ["spaces-in-filenames"]="0|no|no|no"       # Clean: handles spaces in filenames (issue #92)

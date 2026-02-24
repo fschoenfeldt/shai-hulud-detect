@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # Shai-Hulud NPM Supply Chain Attack Detection Script
-# Detects indicators of compromise from September 2025 and November 2025 npm attacks
+# Detects indicators of compromise from supply chain attacks between
+# September 2025 and February 2026
 # Includes detection for "Shai-Hulud: The Second Coming" (fake Bun runtime attack)
 # Usage: ./shai-hulud-detector.sh <directory_to_scan>
 #
@@ -74,9 +75,11 @@ create_temp_dir() {
     touch "$TEMP_DIR/new_workflow_files.txt"
     touch "$TEMP_DIR/github_sha1hulud_runners.txt"
     touch "$TEMP_DIR/preinstall_bun_patterns.txt"
-    touch "$TEMP_DIR/second_coming_repos.txt"
+    touch "$TEMP_DIR/malicious_repo_descriptions.txt"
     touch "$TEMP_DIR/actions_secrets_files.txt"
+    touch "$TEMP_DIR/obfuscated_exfil_files.txt"
     touch "$TEMP_DIR/discussion_workflows.txt"
+    touch "$TEMP_DIR/sandworm_mode_workflows.txt"
     touch "$TEMP_DIR/github_runners.txt"
     touch "$TEMP_DIR/malicious_hashes.txt"
     touch "$TEMP_DIR/destructive_patterns.txt"
@@ -128,6 +131,9 @@ fi
 # Active grep tool selection (set by auto-detection or --use-* flags)
 # Values: "git-grep", "ripgrep", "grep"
 GREP_TOOL=""
+
+# Semver range checking (opt-in via --check-semver-ranges flag)
+CHECK_SEMVER_RANGES=false
 
 # Function: select_grep_tool
 # Purpose: Auto-select the best available grep tool (git-grep > ripgrep > grep)
@@ -194,12 +200,13 @@ print_stage_complete() {
 # Associative arrays for O(1) lookups (Bash 5.0+ feature)
 declare -A COMPROMISED_PACKAGES_MAP    # "package:version" -> 1
 declare -A COMPROMISED_NAMESPACES_MAP  # "@namespace" -> 1
+declare -A COMPROMISED_VERSIONS_BY_NAME # "package_name" -> "version1 version2 ..." (for semver range checking)
 
 # Function: load_compromised_packages
 # Purpose: Load compromised package database from external file or fallback list
 # Args: None (reads from compromised-packages.txt in script directory)
-# Modifies: COMPROMISED_PACKAGES_MAP (global associative array)
-# Returns: Populates COMPROMISED_PACKAGES_MAP for O(1) lookups
+# Modifies: COMPROMISED_PACKAGES_MAP, COMPROMISED_VERSIONS_BY_NAME (global associative arrays)
+# Returns: Populates COMPROMISED_PACKAGES_MAP for O(1) lookups, COMPROMISED_VERSIONS_BY_NAME for semver range checking
 load_compromised_packages() {
     local packages_file="$SCRIPT_DIR/compromised-packages.txt"
     local count=0
@@ -213,9 +220,13 @@ load_compromised_packages() {
             tr -d $'\r'
         )
 
-        # Populate associative array for O(1) lookups
+        # Populate associative arrays for O(1) lookups
         for pkg in "${raw_packages[@]}"; do
             COMPROMISED_PACKAGES_MAP["$pkg"]=1
+            # Also build reverse lookup by package name for semver range checking
+            local pkg_name="${pkg%:*}"
+            local pkg_version="${pkg#*:}"
+            COMPROMISED_VERSIONS_BY_NAME["$pkg_name"]+="$pkg_version "
             ((count++)) || true  # Prevent errexit when count starts at 0
         done
 
@@ -234,6 +245,10 @@ load_compromised_packages() {
         )
         for pkg in "${fallback_packages[@]}"; do
             COMPROMISED_PACKAGES_MAP["$pkg"]=1
+            # Also build reverse lookup for fallback packages
+            local pkg_name="${pkg%:*}"
+            local pkg_version="${pkg#*:}"
+            COMPROMISED_VERSIONS_BY_NAME["$pkg_name"]+="$pkg_version "
         done
     fi
 }
@@ -407,6 +422,10 @@ usage() {
     echo "OPTIONS:"
     echo "  --paranoid         Enable additional security checks (typosquatting, network patterns)"
     echo "                     These are general security features, not specific to Shai-Hulud"
+    echo "  --check-semver-ranges"
+    echo "                     Check if package.json semver ranges (^, ~) could resolve to"
+    echo "                     compromised versions. Reports LOW risk (informational) since"
+    echo "                     packages are largely unpublished from npm."
     echo "  --parallelism N    Set the number of threads to use for parallelized steps (current: ${PARALLELISM})"
     echo "  --check-package P  Check for usage of a specific package (skips all security checks)"
     echo "                     Exit code 0 = package not found, Exit code 1 = package found"
@@ -587,7 +606,10 @@ collect_all_files() {
             -name "package-lock.json" -o -name "yarn.lock" -o -name "pnpm-lock.yaml" -o \
             -name "shai-hulud-workflow.yml" -o \
             -name "setup_bun.js" -o -name "bun_environment.js" -o \
+            -name "bun_installer.js" -o -name "environment_source.js" -o \
             -name "actionsSecrets.json" -o \
+            -name "3nvir0nm3nt.json" -o -name "cl0vd.json" -o \
+            -name "c9nt3nts.json" -o -name "pigS3cr3ts.json" -o \
             -name "*trufflehog*" -o \
             -name "formatter_*.yml" \
         \) -type f 2>/dev/null || true
@@ -609,9 +631,10 @@ collect_all_files() {
     grep "\.\(py\|sh\|bat\|ps1\|cmd\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/script_files.txt" 2>/dev/null || touch "$TEMP_DIR/script_files.txt"
     grep "\(package-lock\.json\|yarn\.lock\|pnpm-lock\.yaml\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/lockfiles.txt" 2>/dev/null || touch "$TEMP_DIR/lockfiles.txt"
     grep "shai-hulud-workflow\.yml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/workflow_files_found.txt" 2>/dev/null || touch "$TEMP_DIR/workflow_files_found.txt"
-    grep "setup_bun\.js$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/setup_bun_files.txt" 2>/dev/null || touch "$TEMP_DIR/setup_bun_files.txt"
-    grep "bun_environment\.js$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/bun_environment_files.txt" 2>/dev/null || touch "$TEMP_DIR/bun_environment_files.txt"
+    grep "\(setup_bun\.js\|bun_installer\.js\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/setup_bun_files.txt" 2>/dev/null || touch "$TEMP_DIR/setup_bun_files.txt"
+    grep "\(bun_environment\.js\|environment_source\.js\)$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/bun_environment_files.txt" 2>/dev/null || touch "$TEMP_DIR/bun_environment_files.txt"
     grep "actionsSecrets\.json$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/actions_secrets_found.txt" 2>/dev/null || touch "$TEMP_DIR/actions_secrets_found.txt"
+    grep -E "(3nvir0nm3nt|cl0vd|c9nt3nts|pigS3cr3ts)\.json$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/obfuscated_exfil_found.txt" 2>/dev/null || touch "$TEMP_DIR/obfuscated_exfil_found.txt"
     grep "trufflehog" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/trufflehog_files.txt" 2>/dev/null || touch "$TEMP_DIR/trufflehog_files.txt"
     grep "formatter_.*\.yml$" "$TEMP_DIR/all_files_raw.txt" > "$TEMP_DIR/formatter_workflows.txt" 2>/dev/null || touch "$TEMP_DIR/formatter_workflows.txt"
 
@@ -728,6 +751,66 @@ check_new_workflow_patterns() {
                 echo "$file" >> "$TEMP_DIR/actions_secrets_files.txt"
             fi
         done < "$TEMP_DIR/actions_secrets_found.txt"
+    fi
+
+    # Look for obfuscated exfiltration JSON files (Golden Path variant)
+    # Files: 3nvir0nm3nt.json, cl0vd.json, c9nt3nts.json, pigS3cr3ts.json
+    if [[ -s "$TEMP_DIR/obfuscated_exfil_found.txt" ]]; then
+        while IFS= read -r file; do
+            if [[ -f "$file" ]]; then
+                echo "$file" >> "$TEMP_DIR/obfuscated_exfil_files.txt"
+            fi
+        done < "$TEMP_DIR/obfuscated_exfil_found.txt"
+    fi
+}
+
+# Function: check_sandworm_mode_workflows
+# Purpose: Detect February 2026 SANDWORM_MODE workflow propagation indicators
+# Args: $1 = scan_dir (directory to scan)
+# Modifies: $TEMP_DIR/sandworm_mode_workflows.txt (temp file)
+# Returns: Populates sandworm_mode_workflows.txt with paths to suspicious workflows
+check_sandworm_mode_workflows() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for SANDWORM_MODE workflow IOCs..."
+
+    # Create file list for valid workflow files
+    while IFS= read -r file; do
+        [[ -f "$file" ]] && echo "$file"
+    done < "$TEMP_DIR/github_workflows.txt" > "$TEMP_DIR/valid_sandworm_workflows.txt"
+
+    # Check if we have any workflow files
+    if [[ ! -s "$TEMP_DIR/valid_sandworm_workflows.txt" ]]; then
+        return 0
+    fi
+
+    # IOC 1: Malicious action usage
+    tr '\n' '\0' < "$TEMP_DIR/valid_sandworm_workflows.txt" | \
+        xargs -0 -I {} grep -l -E "uses:[[:space:]]*ci-quality/code-quality-check@v1|ci-quality/code-quality-check@v1" {} 2>/dev/null | \
+        while IFS= read -r file; do
+            echo "$file:SANDWORM_MODE malicious action usage (ci-quality/code-quality-check@v1)" >> "$TEMP_DIR/sandworm_mode_workflows.txt"
+        done || true
+
+    # IOC 2: Threat actor aliases and propagation references in workflow files
+    tr '\n' '\0' < "$TEMP_DIR/valid_sandworm_workflows.txt" | \
+        xargs -0 -I {} grep -li -E "official334|javaorg|dist/propagate-core\.js|official334@proton|javaorg@proton" {} 2>/dev/null | \
+        while IFS= read -r file; do
+            echo "$file:SANDWORM_MODE threat-actor IOC reference in workflow" >> "$TEMP_DIR/sandworm_mode_workflows.txt"
+        done || true
+
+    # IOC 3: Injected quality workflow file with campaign references
+    while IFS= read -r file; do
+        local workflow_file
+        workflow_file=$(basename "$file")
+        if [[ "$workflow_file" == "quality.yml" || "$workflow_file" == "quality.yaml" ]]; then
+            if grep -qiE "ci-quality/code-quality-check|official334|javaorg|dist/propagate-core\.js" "$file" 2>/dev/null; then
+                echo "$file:SANDWORM_MODE injected workflow pattern (quality.yml + campaign IOC)" >> "$TEMP_DIR/sandworm_mode_workflows.txt"
+            fi
+        fi
+    done < "$TEMP_DIR/valid_sandworm_workflows.txt"
+
+    # Deduplicate by full finding line
+    if [[ -s "$TEMP_DIR/sandworm_mode_workflows.txt" ]]; then
+        sort -u "$TEMP_DIR/sandworm_mode_workflows.txt" -o "$TEMP_DIR/sandworm_mode_workflows.txt"
     fi
 }
 
@@ -894,7 +977,7 @@ check_preinstall_bun_patterns() {
     while IFS= read -r file; do
         if [[ -f "$file" ]]; then
             # Check if the file contains the malicious preinstall pattern
-            if grep -q '"preinstall"[[:space:]]*:[[:space:]]*"node setup_bun\.js"' "$file" 2>/dev/null; then
+            if grep -Eq '"preinstall"[[:space:]]*:[[:space:]]*"node (setup_bun|bun_installer)\.js"' "$file" 2>/dev/null; then
                 echo "$file" >> "$TEMP_DIR/preinstall_bun_patterns.txt"
             fi
         fi
@@ -923,14 +1006,14 @@ check_github_actions_runner() {
     done < "$TEMP_DIR/yaml_files.txt"
 }
 
-# Function: check_second_coming_repos
-# Purpose: Detect repository descriptions with "Sha1-Hulud: The Second Coming" pattern
+# Function: check_malicious_repo_descriptions
+# Purpose: Detect repository descriptions with known malicious patterns
 # Args: $1 = scan_dir (directory to scan)
-# Modifies: SECOND_COMING_REPOS (global array)
-# Returns: Populates array with git repositories matching the description pattern
-check_second_coming_repos() {
+# Modifies: malicious_repo_descriptions.txt (temp file)
+# Returns: Populates temp file with git repositories matching malicious description patterns
+check_malicious_repo_descriptions() {
     local scan_dir=$1
-    print_status "$BLUE" "   Checking for 'Second Coming' repository descriptions..."
+    print_status "$BLUE" "   Checking for malicious repository descriptions..."
 
     # Performance Optimization: Use pre-collected git repositories
     local git_repos_source
@@ -942,25 +1025,32 @@ check_second_coming_repos() {
         git_repos_source="$TEMP_DIR/git_repos_fallback.txt"
     fi
 
+    # Descriptions observed across attacks
+    local malicious_descriptions=(
+        "Sha1-Hulud: The Second Coming"
+        "Goldox-T3chs: Only Happy Girl"
+    )
+
     # Check git repositories with malicious descriptions
     while IFS= read -r repo_dir; do
         if [[ -d "$repo_dir/.git" ]]; then
             # Check git config for repository description with timeout
-            local description
+            local description=""
             if command -v timeout >/dev/null 2>&1; then
                 # GNU timeout is available
-                if description=$(timeout 5s git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0'); then
-                    if [[ "$description" == *"Sha1-Hulud: The Second Coming"* ]]; then
-                        echo "$repo_dir" >> "$TEMP_DIR/second_coming_repos.txt"
-                    fi
-                fi
+                description=$(timeout 5s git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0') || description=""
             else
                 # Fallback for systems without timeout command (e.g., macOS)
-                if description=$(git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0'); then
-                    if [[ "$description" == *"Sha1-Hulud: The Second Coming"* ]]; then
-                        echo "$repo_dir" >> "$TEMP_DIR/second_coming_repos.txt"
+                description=$(git -C "$repo_dir" config --get --local --null --default "" repository.description 2>/dev/null | tr -d '\0') || description=""
+            fi
+
+            if [[ -n "$description" ]]; then
+                for malicious_desc in "${malicious_descriptions[@]}"; do
+                    if [[ "$description" == *"$malicious_desc"* ]]; then
+                        echo "$repo_dir:Description: $description" >> "$TEMP_DIR/malicious_repo_descriptions.txt"
+                        break
                     fi
-                fi
+                done
             fi
             # Skip repositories where git command times out or fails
         fi
@@ -1278,6 +1368,70 @@ check_packages() {
     done
 
     echo -ne "\r\033[K"
+}
+
+# Function: check_semver_ranges
+# Purpose: Check if package.json semver ranges (^, ~) could resolve to compromised versions
+# Args: $1 = scan_dir (directory to scan)
+# Modifies: lockfile_safe_versions.txt, suspicious_found.txt, compromised_found.txt
+# Returns: Populates findings files based on lockfile analysis
+# Note: Only runs when --check-semver-ranges flag is passed (opt-in)
+check_semver_ranges() {
+    [[ "$CHECK_SEMVER_RANGES" != "true" ]] && return 0
+
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking semver ranges for potential compromised version matches..."
+
+    # Re-use already extracted deps from check_packages (all_deps.txt)
+    # Format: file_path|package_name:version_range
+    local checked=0
+    local matches=0
+
+    while IFS='|' read -r file_path dep_info; do
+        [[ -z "$file_path" || -z "$dep_info" ]] && continue
+
+        local pkg_name="${dep_info%:*}"
+        local version_range="${dep_info#*:}"
+
+        # Skip if no compromised versions for this package
+        [[ -z "${COMPROMISED_VERSIONS_BY_NAME[$pkg_name]}" ]] && continue
+
+        # Skip exact versions (no ^, ~, x, *)
+        [[ ! "$version_range" =~ [\^~xX\*] ]] && continue
+
+        ((checked++)) || true
+
+        # Check each compromised version against the range
+        for comp_version in ${COMPROMISED_VERSIONS_BY_NAME[$pkg_name]}; do
+            if semver_match "$comp_version" "$version_range"; then
+                ((matches++)) || true
+                # Range could match compromised version - check lockfile
+                local pkg_dir
+                pkg_dir=$(dirname "$file_path")
+                local locked_version
+                locked_version=$(get_lockfile_version "$pkg_name" "$pkg_dir" "$scan_dir")
+
+                if [[ -n "$locked_version" ]]; then
+                    if [[ "$locked_version" == "$comp_version" ]]; then
+                        # Lockfile has compromised version - HIGH risk (already detected by check_packages)
+                        # Don't double-report, just skip
+                        :
+                    else
+                        # Lockfile has safe version - LOW risk warning
+                        echo "$file_path:$pkg_name@$version_range (locked to $locked_version, could match $comp_version)" >> "$TEMP_DIR/lockfile_safe_versions.txt"
+                    fi
+                else
+                    # No lockfile - LOW risk (packages largely unpublished, only matters with stale caches)
+                    echo "$file_path:$pkg_name@$version_range (no lockfile, could resolve to $comp_version)" >> "$TEMP_DIR/lockfile_safe_versions.txt"
+                fi
+                break  # Found a match, no need to check other versions
+            fi
+        done
+    done < "$TEMP_DIR/all_deps.txt"
+
+    if [[ $matches -gt 0 ]]; then
+        print_status "$BLUE" "   Found $matches semver ranges that could match compromised versions (checked $checked ranges)"
+    fi
 }
 
 # Function: check_package_usage
@@ -2225,6 +2379,7 @@ write_log_file() {
 
         # Discussion workflows, runners (extract file path before colon)
         [[ -s "$TEMP_DIR/discussion_workflows.txt" ]] && cut -d: -f1 "$TEMP_DIR/discussion_workflows.txt" || true
+        [[ -s "$TEMP_DIR/sandworm_mode_workflows.txt" ]] && cut -d: -f1 "$TEMP_DIR/sandworm_mode_workflows.txt" || true
         [[ -s "$TEMP_DIR/github_runners.txt" ]] && cut -d: -f1 "$TEMP_DIR/github_runners.txt" || true
 
         # Destructive patterns (extract file path before colon)
@@ -2235,7 +2390,7 @@ write_log_file() {
         [[ -s "$TEMP_DIR/github_sha1hulud_runners.txt" ]] && cat "$TEMP_DIR/github_sha1hulud_runners.txt" || true
 
         # Second coming repos
-        [[ -s "$TEMP_DIR/second_coming_repos.txt" ]] && cat "$TEMP_DIR/second_coming_repos.txt" || true
+        [[ -s "$TEMP_DIR/malicious_repo_descriptions.txt" ]] && cat "$TEMP_DIR/malicious_repo_descriptions.txt" || true
 
         # Compromised packages (extract file path before colon)
         [[ -s "$TEMP_DIR/compromised_found.txt" ]] && cut -d: -f1 "$TEMP_DIR/compromised_found.txt" || true
@@ -2357,7 +2512,7 @@ generate_report() {
         print_status "$RED" "🚨 HIGH RISK: November 2025 Bun attack setup files detected:"
         while IFS= read -r file; do
             echo "   - $file"
-            show_file_preview "$file" "HIGH RISK: setup_bun.js - Fake Bun runtime installation malware"
+            show_file_preview "$file" "HIGH RISK: Fake Bun runtime installation malware (setup_bun.js / bun_installer.js)"
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/bun_setup_files.txt"
     fi
@@ -2366,7 +2521,7 @@ generate_report() {
         print_status "$RED" "🚨 HIGH RISK: November 2025 Bun environment payload detected:"
         while IFS= read -r file; do
             echo "   - $file"
-            show_file_preview "$file" "HIGH RISK: bun_environment.js - 10MB+ obfuscated credential harvesting payload"
+            show_file_preview "$file" "HIGH RISK: 10MB+ obfuscated credential harvesting payload (bun_environment.js / environment_source.js)"
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/bun_environment_files.txt"
     fi
@@ -2389,6 +2544,15 @@ generate_report() {
         done < "$TEMP_DIR/actions_secrets_files.txt"
     fi
 
+    if [[ -s "$TEMP_DIR/obfuscated_exfil_files.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: Obfuscated exfiltration files detected (Golden Path variant):"
+        while IFS= read -r file; do
+            echo "   - $file"
+            show_file_preview "$file" "HIGH RISK: Obfuscated JSON - Stolen credentials/secrets staged for exfiltration"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/obfuscated_exfil_files.txt"
+    fi
+
     if [[ -s "$TEMP_DIR/discussion_workflows.txt" ]]; then
         print_status "$RED" "🚨 HIGH RISK: Malicious discussion-triggered workflows detected:"
         while IFS= read -r line; do
@@ -2399,6 +2563,18 @@ generate_report() {
             show_file_preview "$file" "HIGH RISK: Discussion workflow - Enables arbitrary command execution via GitHub discussions"
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/discussion_workflows.txt"
+    fi
+
+    if [[ -s "$TEMP_DIR/sandworm_mode_workflows.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: February 2026 SANDWORM_MODE workflow indicators detected:"
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: Workflow contains SANDWORM_MODE campaign IOC"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/sandworm_mode_workflows.txt"
     fi
 
     if [[ -s "$TEMP_DIR/github_runners.txt" ]]; then
@@ -2458,13 +2634,15 @@ generate_report() {
         done < "$TEMP_DIR/github_sha1hulud_runners.txt"
     fi
 
-    if [[ -s "$TEMP_DIR/second_coming_repos.txt" ]]; then
-        print_status "$RED" "🚨 HIGH RISK: 'Shai-Hulud: The Second Coming' repositories detected:"
-        while IFS= read -r repo_dir; do
+    if [[ -s "$TEMP_DIR/malicious_repo_descriptions.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: Malicious repository descriptions detected:"
+        while IFS= read -r repo_entry; do
+            local repo_dir="${repo_entry%%:*}"
+            local repo_info="${repo_entry#*:}"
             echo "   - $repo_dir"
-            echo "     Repository description: Sha1-Hulud: The Second Coming."
+            [[ -n "$repo_info" && "$repo_info" != "$repo_dir" ]] && echo "     ${repo_info#*: }"
             high_risk=$((high_risk+1))
-        done < "$TEMP_DIR/second_coming_repos.txt"
+        done < "$TEMP_DIR/malicious_repo_descriptions.txt"
     fi
 
     # Report compromised packages
@@ -2848,6 +3026,9 @@ main() {
             --paranoid)
                 paranoid_mode=true
                 ;;
+            --check-semver-ranges)
+                CHECK_SEMVER_RANGES=true
+                ;;
             --help|-h)
                 usage
                 ;;
@@ -2977,6 +3158,7 @@ main() {
     check_workflow_files "$scan_dir"
     check_file_hashes "$scan_dir"
     check_packages "$scan_dir"
+    check_semver_ranges "$scan_dir"
     check_postinstall_hooks "$scan_dir"
     print_stage_complete "Core detection"
 
@@ -2997,17 +3179,18 @@ main() {
     print_stage_complete "Repository analysis"
 
     # Advanced pattern detection
-    print_status "$ORANGE" "[Stage 5/6] Advanced detection (discussions, runners, destructive)"
+    print_status "$ORANGE" "[Stage 5/6] Advanced detection (discussions, sandworm, runners, destructive)"
     check_discussion_workflows "$scan_dir"
+    check_sandworm_mode_workflows "$scan_dir"
     check_github_runners "$scan_dir"
     check_destructive_patterns "$scan_dir"
     check_preinstall_bun_patterns "$scan_dir"
     print_stage_complete "Advanced detection"
 
     # Final checks
-    print_status "$ORANGE" "[Stage 6/6] Final checks (actions runner, second coming repos)"
+    print_status "$ORANGE" "[Stage 6/6] Final checks (actions runner, malicious repo descriptions)"
     check_github_actions_runner "$scan_dir"
-    check_second_coming_repos "$scan_dir"
+    check_malicious_repo_descriptions "$scan_dir"
     print_stage_complete "Final checks"
 
     # Run additional security checks only in paranoid mode

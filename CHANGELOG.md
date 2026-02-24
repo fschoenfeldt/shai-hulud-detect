@@ -5,6 +5,88 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.7] - 2026-02-23
+
+### Added
+- **February 2026 SANDWORM_MODE Coverage**: Added 19 confirmed malicious package versions from Socket's SANDWORM_MODE campaign report:
+  - `claud-code:0.2.1`
+  - `cloude-code:0.2.1`
+  - `cloude:0.3.0`
+  - `crypto-locale:1.0.0`
+  - `crypto-reader-info:1.0.0`
+  - `detect-cache:1.0.0`
+  - `format-defaults:1.0.0`
+  - `hardhta:1.0.0`
+  - `locale-loader-pro:1.0.0`
+  - `naniod:1.0.0`
+  - `node-native-bridge:1.0.0`
+  - `opencraw:2026.2.17`
+  - `parse-compat:1.0.0`
+  - `rimarf:1.0.0`
+  - `scan-store:1.0.0`
+  - `secp256:1.0.0`
+  - `suport-color:1.0.1`
+  - `veim:2.46.2`
+  - `yarsg:18.0.1`
+- **SANDWORM_MODE Workflow IOC Detection**:
+  - Detects malicious GitHub Action usage of `ci-quality/code-quality-check@v1`
+  - Detects workflow IOC references tied to threat actor aliases (`official334`, `javaorg`) and `dist/propagate-core.js`
+  - Detects poisoned `quality.yml`/`quality.yaml` workflows when campaign IoCs are present
+- **SANDWORM_MODE Test Case**: Added `test-cases/sandworm-mode-workflow/` to validate workflow IOC detection.
+
+### Changed
+- **Package Count**: Expanded `compromised-packages.txt` from 1,681 to 1,700 confirmed package versions.
+- **Data Freshness**: Updated `compromised-packages.txt` metadata from "Last updated: November 2025" to "Last updated: February 2026".
+- **Documentation**: Updated `README.md` campaign scope and detection capabilities to include February 2026 SANDWORM_MODE indicators.
+
+### Security
+- Added high-confidence detection for the workflow propagation vector documented in:
+  - https://socket.dev/blog/sandworm-mode-npm-worm-ai-toolchain-poisoning
+
+## [3.0.6] - 2026-01-09
+
+### Added
+- **Golden Path Variant Detection**: Added comprehensive detection for December 2025 "Shai-Hulud: Golden Path" attack variant
+  - Detection for renamed attack files: `bun_installer.js` and `environment_source.js`
+  - Detection for obfuscated exfiltration JSON files: `3nvir0nm3nt.json`, `cl0vd.json`, `c9nt3nts.json`, `pigS3cr3ts.json`
+  - Detection for new malicious repo description: "Goldox-T3chs: Only Happy Girl"
+- **New Compromised Packages**: Added 3 compromised package versions from Golden Path attack:
+  - `@vietmoney/react-big-calendar:0.26.0`
+  - `@vietmoney/react-big-calendar:0.26.1`
+  - `@vietmoney/react-big-calendar:0.26.2`
+- **December 2025 Test Case**: Added `test-cases/december-2025-attack/` with complete Golden Path attack simulation
+
+### Changed
+- **Package Count**: Expanded compromised-packages.txt from 1,679 to 1,682 package versions
+- **File Detection**: Extended November 2025 Bun attack file detection to include renamed Golden Path variants
+- **Repository Description Detection**: Added "Goldox-T3chs: Only Happy Girl" pattern to malicious repo detection
+
+### Security
+- **Complete Golden Path Coverage**: Detection of all known Golden Path attack indicators from Aikido security research
+- **Obfuscated File Detection**: New HIGH RISK detection for stolen credentials staged in leetspeak-named JSON files
+- **Attack Evolution Coverage**: Detection patterns now cover the full Shai-Hulud attack family including original, Second Coming, and Golden Path variants
+
+### Technical Details
+- Added `obfuscated_exfil_files.txt` temp file for tracking obfuscated exfiltration JSON findings
+- Extended `find_files()` to collect `3nvir0nm3nt.json`, `cl0vd.json`, `c9nt3nts.json`, `pigS3cr3ts.json`
+- Added grep categorization for obfuscated exfil files to `obfuscated_exfil_found.txt`
+- Extended `check_new_workflow_patterns()` to process obfuscated exfiltration files
+- Added HIGH RISK reporting section for obfuscated exfiltration file detection
+- Source: [Aikido Golden Path Analysis](https://www.aikido.dev/blog/shai-hulud-strikes-again---the-golden-path)
+
+## [3.0.5] - 2025-12-21
+
+### Added
+- **--check-semver-ranges flag**: Opt-in check for package.json semver ranges that could resolve to compromised versions (resolves GitHub issue #109)
+  - Reports LOW risk as informational warning about latent risk (packages largely unpublished from npm)
+  - Uses reverse lookup by package name for O(1) performance instead of O(n*packages)
+  - Reuses dependency extraction from check_packages() - no additional file scanning
+
+### Technical Details
+- Added `COMPROMISED_VERSIONS_BY_NAME` associative array for efficient semver range checking
+- Added `check_semver_ranges()` function that only runs when flag is passed
+- Leverages existing `semver_match()` function that was previously unused
+
 ## [3.0.4] - 2025-12-03
 
 ### Changed
