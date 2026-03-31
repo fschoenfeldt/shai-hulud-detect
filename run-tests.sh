@@ -25,6 +25,7 @@ NC='\033[0m' # No Color
 # These are the CORRECT expected values (matching original behavior where it works,
 # or improved behavior where original had bugs like timeouts)
 declare -A EXPECTED=(
+    ["axios-attack"]="1|yes|no|no"              # HIGH: March 2026 axios supply chain attack IoCs
     ["chalk-debug-attack"]="1|yes|yes|no"      # HIGH: compromised packages + MEDIUM lockfile
     ["clean-project"]="0|no|no|no"             # Clean
     ["common-crypto-libs"]="2|no|yes|no"       # MEDIUM: crypto patterns
