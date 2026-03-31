@@ -6,7 +6,7 @@
 #
 # Sources: StepSecurity, Wiz.io, Semgrep, JFrog security advisories and Socket.dev
 # Format: package_name:version
-# Last updated: February 2026
+# Last updated: March 2026
 #
 # MAINTAINING THIS LIST:
 # - Add new compromised packages as they are discovered
@@ -1742,3 +1742,14 @@ yarsg:18.0.1
 # iru-caches
 # iruchache
 # uudi
+
+# ========================================================================
+# MARCH 2026 - AXIOS SUPPLY CHAIN ATTACK (3 packages)
+# Compromised axios maintainer account injects plain-crypto-js RAT dropper
+# C2: sfrclak[.]com (142.11.206.73:8000)
+# Attacker accounts: nrwise (nrwise@proton.me), ifstap@proton.me
+# Source: https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan
+# ========================================================================
+axios:1.14.1
+axios:0.30.4
+plain-crypto-js:4.2.1

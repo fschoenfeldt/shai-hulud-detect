@@ -10,11 +10,11 @@
 
 <img src="shai_hulu_detector.jpg" alt="sshd" width="80%" />
 
-A Bash tool that helps you spot known traces of the September 2025 through February 2026 npm supply-chain attacks—including the Shai-Hulud self-replicating worm, the chalk/debug crypto-theft incident, the "Shai-Hulud: The Second Coming" fake Bun runtime attack, and the February 2026 SANDWORM_MODE campaign. It cross-checks 1,700+ confirmed bad package versions across multiple campaigns and checks for the most relevant red flags in your project.
+A Bash tool that helps you spot known traces of the September 2025 through March 2026 npm supply-chain attacks—including the Shai-Hulud self-replicating worm, the chalk/debug crypto-theft incident, the "Shai-Hulud: The Second Coming" fake Bun runtime attack, the February 2026 SANDWORM_MODE campaign, and the March 2026 axios supply chain compromise. It cross-checks 1,703+ confirmed bad package versions across multiple campaigns and checks for the most relevant red flags in your project.
 
 ## Overview
 
-Covers multiple npm supply chain attacks from September 2025 through February 2026:
+Covers multiple npm supply chain attacks from September 2025 through March 2026:
 
 ### **Chalk/Debug Crypto Theft Attack** (September 8, 2025)
 - **Scope**: 18+ packages with 2+ billion weekly downloads
@@ -55,6 +55,16 @@ Covers multiple npm supply chain attacks from September 2025 through February 20
 - **Packages**: `claud-code`, `cloude-code`, `cloude`, `opencraw`, `veim`, `yarsg`, and others
 - **Source**: [Socket.dev analysis](https://socket.dev/blog/sandworm-mode-npm-worm-ai-toolchain-poisoning)
 
+### **Axios Supply Chain Attack** (March 31, 2026)
+- **Scope**: Compromised axios maintainer account publishes malicious versions with RAT dropper
+- **Attack**: Injected `plain-crypto-js` dependency delivers cross-platform Remote Access Trojan
+- **Method**: Postinstall hook runs obfuscated `setup.js` that drops platform-specific RAT; beacons every 60s
+- **C2**: `sfrclak.com` (142.11.206.73:8000)
+- **Packages**: `axios@1.14.1`, `axios@0.30.4`, `plain-crypto-js@4.2.1`
+- **Attacker accounts**: `nrwise` (`nrwise@proton.me`), hijacked `jasonsaayman` (`ifstap@proton.me`)
+- **Anti-forensics**: Dropper overwrites its own package.json version from 4.2.1 to 4.2.0
+- **Source**: [StepSecurity analysis](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan)
+
 ## Quick Start
 
 ```bash
@@ -88,13 +98,14 @@ echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
 - **Known malicious file hashes**: Files matching any of 7 SHA-256 hashes from different Shai-Hulud worm variants (V1-V7), sourced from [Socket.dev's comprehensive attack analysis](https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages)
 - **November 2025 Bun attack files**: `setup_bun.js`/`bun_installer.js` (fake Bun runtime installer) and `bun_environment.js`/`environment_source.js` (10MB+ obfuscated credential harvesting payload)
 - **Obfuscated exfiltration files**: `3nvir0nm3nt.json`, `cl0vd.json`, `c9nt3nts.json`, `pigS3cr3ts.json` (Golden Path variant - stolen credentials staged for exfiltration)
-- **Compromised package versions**: Specific versions of 1,700+ packages from multiple attacks (September 2025 through February 2026)
+- **Compromised package versions**: Specific versions of 1,703+ packages from multiple attacks (September 2025 through March 2026)
 - **Suspicious postinstall hooks**: Package.json files with postinstall scripts containing curl, wget, eval commands, or fake Bun installation (`"preinstall": "node setup_bun.js"`)
 - **Trufflehog activity**: Files containing trufflehog references, credential scanning patterns, or November 2025 enhanced patterns (automated TruffleHog download and execution)
 - **Shai-Hulud repositories**: Git repositories named "Shai-Hulud" (used for data exfiltration) or with "Sha1-Hulud: The Second Coming" or "Goldox-T3chs: Only Happy Girl" descriptions
 - **Secrets exfiltration files**: `actionsSecrets.json` files with double Base64 encoded credentials (November 2025)
 - **SHA1HULUD GitHub Actions runners**: GitHub Actions workflows using malicious runners for credential theft
 - **SANDWORM_MODE workflow IoCs**: Workflow files containing `ci-quality/code-quality-check@v1`, actor aliases (`official334`, `javaorg`), or related propagation module references
+- **Axios supply chain attack IoCs**: C2 domain `sfrclak.com` / IP `142.11.206.73`, XOR key `OrDeR_7077`, `plain-crypto-js` dependency (malicious RAT dropper), and filesystem persistence artifacts (March 2026)
 
 ### Medium Risk Indicators
 - **Suspicious content patterns**: References to `webhook.site` and the malicious endpoint `bb8ca5f6-4175-45d2-b042-fc9ebb8170b7`
@@ -107,7 +118,7 @@ echo "Exit code: $?"  # 0=clean, 1=high-risk, 2=medium-risk
 ### Package Detection Method
 
 The script loads a list of the compromised packages from an external file (`compromised-packages.txt`) which contains:
-- **1,700+ confirmed compromised package versions** with exact version numbers (September 2025 through February 2026 campaigns)
+- **1,703+ confirmed compromised package versions** with exact version numbers (September 2025 through March 2026 campaigns)
 - **18+ affected namespaces** for broader detection of packages from compromised maintainer accounts
 
 ### Maintaining and Updating the Package List
@@ -130,6 +141,7 @@ Check these security advisories regularly for newly discovered compromised packa
 - **[Socket.dev Blog](https://socket.dev/blog/ongoing-supply-chain-attack-targets-crowdstrike-npm-packages)** - CrowdStrike package analysis
 - **[Socket.dev Blog](https://socket.dev/blog/sandworm-mode-npm-worm-ai-toolchain-poisoning)** - SANDWORM_MODE AI toolchain poisoning campaign
 - **[HelixGuard](https://helixguard.ai/blog/malicious-sha1hulud-2025-11-24)** - Second Coming analysis
+- **[StepSecurity Blog](https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan)** - March 2026 axios supply chain compromise
 
 ### How to Add Newly Discovered Packages
 
@@ -138,7 +150,7 @@ Check these security advisories regularly for newly discovered compromised packa
 3. Test the script to ensure detection works
 4. Consider contributing updates back to this repository
 
-**Coverage Note**: Multiple campaigns from September 2025 through February 2026 affected 1,700+ packages total. Our detection aims to provide **comprehensive coverage** across the Shai-Hulud worm (517+ packages), Chalk/Debug crypto theft (26+ packages), "Shai-Hulud: The Second Coming" fake Bun runtime attack (1,100+ packages), the Golden Path variant, and the February 2026 SANDWORM_MODE campaign.
+**Coverage Note**: Multiple campaigns from September 2025 through March 2026 affected 1,703+ packages total. Our detection aims to provide **comprehensive coverage** across the Shai-Hulud worm (517+ packages), Chalk/Debug crypto theft (26+ packages), "Shai-Hulud: The Second Coming" fake Bun runtime attack (1,100+ packages), the Golden Path variant, the February 2026 SANDWORM_MODE campaign, and the March 2026 axios supply chain compromise.
 
 ### Core vs Paranoid Mode
 
@@ -374,6 +386,9 @@ You can also run individual test cases manually:
 # Test SANDWORM_MODE workflow IOC detection (should show HIGH risk for poisoned ci-quality action usage)
 ./shai-hulud-detector.sh test-cases/sandworm-mode-workflow
 
+# Test axios supply chain attack IOC detection (should show HIGH risk for C2, XOR key, plain-crypto-js)
+./shai-hulud-detector.sh test-cases/axios-attack
+
 # Test GitHub Actions runner detection (should show CRITICAL risk for SHA1HULUD self-hosted runners)
 ./shai-hulud-detector.sh test-cases/github-actions-runners
 
@@ -398,8 +413,8 @@ The `--paranoid` flag enables additional security checks beyond Shai-Hulud-speci
 
 The script performs these checks:
 
-1. **Package Database Loading**: Loads 1,700+ compromised packages from `compromised-packages.txt` into O(1) lookup maps
-2. **Workflow Detection**: Searches for `shai-hulud-workflow.yml` files (September 2025), `formatter_*.yml` files with SHA1HULUD runners (November 2025), and SANDWORM_MODE workflow IoCs (February 2026)
+1. **Package Database Loading**: Loads 1,703+ compromised packages from `compromised-packages.txt` into O(1) lookup maps
+2. **Workflow Detection**: Searches for `shai-hulud-workflow.yml` files (September 2025), `formatter_*.yml` files with SHA1HULUD runners (November 2025), SANDWORM_MODE workflow IoCs (February 2026), and axios supply chain attack IoCs (March 2026)
 3. **Hash Verification**: Calculates SHA-256 hashes against 7 known malicious bundle.js variants (V1-V7)
 4. **Package Analysis**: Parses `package.json` files for compromised versions and affected namespaces
 5. **Semver Range Checking** (opt-in with `--check-semver-ranges`): Checks if version ranges could resolve to compromised versions

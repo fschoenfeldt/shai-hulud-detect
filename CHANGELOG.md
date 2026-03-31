@@ -5,6 +5,30 @@ All notable changes to the Shai-Hulud NPM Supply Chain Attack Detector will be d
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.8] - 2026-03-31
+
+### Added
+- **March 2026 Axios Supply Chain Attack Coverage**: Added detection for the compromised axios npm packages:
+  - `axios:1.14.1`
+  - `axios:0.30.4`
+  - `plain-crypto-js:4.2.1` (malicious injected dependency - cross-platform RAT dropper)
+- **Axios Attack IoC Detection**:
+  - Detects C2 domain `sfrclak.com` and IP `142.11.206.73`
+  - Detects XOR key `OrDeR_7077` used in obfuscated dropper
+  - Detects distinctive RAT beaconing User-Agent string
+  - Detects `plain-crypto-js` as a dependency (any version - entirely an attack package)
+  - Detects filesystem artifacts: `com.apple.act.mond` (macOS), `ld.py` (Linux)
+  - Detects attacker account references (`nrwise@proton.me`, `ifstap@proton.me`)
+- **Axios Attack Test Case**: Added `test-cases/axios-attack/` to validate axios attack IoC detection.
+
+### Changed
+- **Package Count**: Expanded `compromised-packages.txt` from 1,700 to 1,703 confirmed package versions.
+- **Data Freshness**: Updated `compromised-packages.txt` metadata from "Last updated: February 2026" to "Last updated: March 2026".
+
+### Security
+- Added high-confidence detection for the axios supply chain attack documented in:
+  - https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan
+
 ## [3.0.7] - 2026-02-23
 
 ### Added
