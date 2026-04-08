@@ -80,6 +80,7 @@ create_temp_dir() {
     touch "$TEMP_DIR/obfuscated_exfil_files.txt"
     touch "$TEMP_DIR/discussion_workflows.txt"
     touch "$TEMP_DIR/sandworm_mode_workflows.txt"
+    touch "$TEMP_DIR/axios_attack_indicators.txt"
     touch "$TEMP_DIR/github_runners.txt"
     touch "$TEMP_DIR/malicious_hashes.txt"
     touch "$TEMP_DIR/destructive_patterns.txt"
@@ -811,6 +812,78 @@ check_sandworm_mode_workflows() {
     # Deduplicate by full finding line
     if [[ -s "$TEMP_DIR/sandworm_mode_workflows.txt" ]]; then
         sort -u "$TEMP_DIR/sandworm_mode_workflows.txt" -o "$TEMP_DIR/sandworm_mode_workflows.txt"
+    fi
+}
+
+# Function: check_axios_attack_indicators
+# Purpose: Detect March 2026 axios supply chain attack indicators (C2, XOR key, plain-crypto-js, artifacts)
+# Args: $1 = scan_dir (directory to scan)
+# Modifies: $TEMP_DIR/axios_attack_indicators.txt (temp file)
+# Returns: Populates axios_attack_indicators.txt with paths to suspicious files
+check_axios_attack_indicators() {
+    local scan_dir=$1
+    print_status "$BLUE" "   Checking for axios supply chain attack IOCs..."
+
+    # IOC 1: C2 domain and IP
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        fast_grep_files_fixed "sfrclak.com" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Axios attack C2 domain (sfrclak.com)" >> "$TEMP_DIR/axios_attack_indicators.txt"
+            done
+        fast_grep_files_fixed "sfrclak[.]com" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Axios attack C2 domain (sfrclak[.]com defanged)" >> "$TEMP_DIR/axios_attack_indicators.txt"
+            done
+        fast_grep_files_fixed "142.11.206.73" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Axios attack C2 IP (142.11.206.73)" >> "$TEMP_DIR/axios_attack_indicators.txt"
+            done
+    fi
+
+    # IOC 2: XOR key used in obfuscated dropper
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        fast_grep_files_fixed "OrDeR_7077" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Axios attack XOR key (OrDeR_7077)" >> "$TEMP_DIR/axios_attack_indicators.txt"
+            done
+    fi
+
+    # IOC 3: Distinctive User-Agent string from RAT beaconing
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        fast_grep_files_fixed "msie 8.0; windows nt 5.1; trident/4.0" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Axios attack RAT User-Agent string detected" >> "$TEMP_DIR/axios_attack_indicators.txt"
+            done
+    fi
+
+    # IOC 4: plain-crypto-js as a dependency (any version - entirely an attack package)
+    if [[ -s "$TEMP_DIR/package_files.txt" ]]; then
+        fast_grep_files_fixed "plain-crypto-js" < "$TEMP_DIR/package_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Malicious dependency plain-crypto-js (axios supply chain attack)" >> "$TEMP_DIR/axios_attack_indicators.txt"
+            done
+    fi
+
+    # IOC 5: Filesystem artifacts (RAT persistence)
+    local -a artifact_names=("com.apple.act.mond" "ld.py")
+    local artifact
+    for artifact in "${artifact_names[@]}"; do
+        find "$scan_dir" -name "$artifact" -type f 2>/dev/null | while IFS= read -r file; do
+            echo "$file:Axios attack filesystem artifact ($artifact)" >> "$TEMP_DIR/axios_attack_indicators.txt"
+        done
+    done
+
+    # IOC 6: Attacker account references in config/code
+    if [[ -s "$TEMP_DIR/code_files.txt" ]]; then
+        fast_grep_files_i "ifstap@proton\.me|nrwise@proton\.me" < "$TEMP_DIR/code_files.txt" | \
+            while IFS= read -r file; do
+                echo "$file:Axios attack threat actor email reference" >> "$TEMP_DIR/axios_attack_indicators.txt"
+            done
+    fi
+
+    # Deduplicate
+    if [[ -s "$TEMP_DIR/axios_attack_indicators.txt" ]]; then
+        sort -u "$TEMP_DIR/axios_attack_indicators.txt" -o "$TEMP_DIR/axios_attack_indicators.txt"
     fi
 }
 
@@ -2380,6 +2453,7 @@ write_log_file() {
         # Discussion workflows, runners (extract file path before colon)
         [[ -s "$TEMP_DIR/discussion_workflows.txt" ]] && cut -d: -f1 "$TEMP_DIR/discussion_workflows.txt" || true
         [[ -s "$TEMP_DIR/sandworm_mode_workflows.txt" ]] && cut -d: -f1 "$TEMP_DIR/sandworm_mode_workflows.txt" || true
+        [[ -s "$TEMP_DIR/axios_attack_indicators.txt" ]] && cut -d: -f1 "$TEMP_DIR/axios_attack_indicators.txt" || true
         [[ -s "$TEMP_DIR/github_runners.txt" ]] && cut -d: -f1 "$TEMP_DIR/github_runners.txt" || true
 
         # Destructive patterns (extract file path before colon)
@@ -2575,6 +2649,20 @@ generate_report() {
             show_file_preview "$file" "HIGH RISK: Workflow contains SANDWORM_MODE campaign IOC"
             high_risk=$((high_risk+1))
         done < "$TEMP_DIR/sandworm_mode_workflows.txt"
+    fi
+
+    if [[ -s "$TEMP_DIR/axios_attack_indicators.txt" ]]; then
+        print_status "$RED" "🚨 HIGH RISK: March 2026 axios supply chain attack indicators detected:"
+        print_status "$RED" "    ⚠️  WARNING: Compromised axios versions drop a cross-platform RAT!"
+        while IFS= read -r line; do
+            local file="${line%%:*}"
+            local reason="${line#*:}"
+            echo "   - $file"
+            echo "     Reason: $reason"
+            show_file_preview "$file" "HIGH RISK: Axios supply chain attack indicator"
+            high_risk=$((high_risk+1))
+        done < "$TEMP_DIR/axios_attack_indicators.txt"
+        print_status "$RED" "    📋 IMMEDIATE ACTION: Downgrade to axios@1.14.0, remove plain-crypto-js, rotate all credentials"
     fi
 
     if [[ -s "$TEMP_DIR/github_runners.txt" ]]; then
@@ -3179,9 +3267,10 @@ main() {
     print_stage_complete "Repository analysis"
 
     # Advanced pattern detection
-    print_status "$ORANGE" "[Stage 5/6] Advanced detection (discussions, sandworm, runners, destructive)"
+    print_status "$ORANGE" "[Stage 5/6] Advanced detection (discussions, sandworm, axios, runners, destructive)"
     check_discussion_workflows "$scan_dir"
     check_sandworm_mode_workflows "$scan_dir"
+    check_axios_attack_indicators "$scan_dir"
     check_github_runners "$scan_dir"
     check_destructive_patterns "$scan_dir"
     check_preinstall_bun_patterns "$scan_dir"
